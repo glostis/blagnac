@@ -86,8 +86,19 @@ def main(db_path="db.db"):
         for flight in flights_dicts:
             session.add(Flight(**flight))
         session.commit()
-    return fr_api
+    return len(flights)
 
 
 if __name__ == "__main__":
-    main()
+    # Taken from https://stackoverflow.com/a/25251804
+    import time
+    from datetime import datetime, timezone
+    starttime = time.monotonic()
+    periodicity = 30
+    logfile = "log.log"
+    while True:
+        nb_flights = main()
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with open("log.log", "a") as f:
+            f.write(f"{now} - {nb_flights} flights\n")
+        time.sleep(periodicity - ((time.monotonic() - starttime) % periodicity))
