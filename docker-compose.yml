@@ -1,0 +1,21 @@
+version: "3"
+
+services:
+  blagnac:
+    image: blagnac
+    build: ./
+    container_name: blagnac
+    ports:
+        - 8082:1234
+    volumes:
+      - ./:/app/
+    command: streamlit run --server.port 1234 app.py
+    environment:
+      - VIRTUAL_HOST
+      - LETSENCRYPT_HOST
+      - LETSENCRYPT_EMAIL
+
+networks:
+  default:
+    name: nginx-proxy
+    external: true
