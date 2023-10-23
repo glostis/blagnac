@@ -1,11 +1,10 @@
 import math
 from pathlib import Path
-from sqlalchemy import create_engine
 
+from FlightRadar24 import FlightRadar24API
 from pyproj import Geod
 from shapely import Polygon
-from FlightRadar24 import FlightRadar24API
-from sqlalchemy import String
+from sqlalchemy import create_engine, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 
 

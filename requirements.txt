@@ -1,0 +1,5 @@
+sqlalchemy==2.0.22
+pyproj==3.6.1
+shapely==2.0.2
+FlightRadarAPI==1.3.10
+
