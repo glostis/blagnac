@@ -9,13 +9,13 @@ services:
         - 8082:1234
     volumes:
       - ./:/app/
-    command: streamlit run --server.port 1234 app.py
+    command: streamlit run --server.port 1234 streamlit/Data_exploration.py
     environment:
       - VIRTUAL_HOST
       - LETSENCRYPT_HOST
       - LETSENCRYPT_EMAIL
 
-networks:
-  default:
-    name: nginx-proxy
-    external: true
+# networks:
+#   default:
+#     name: nginx-proxy
+#     external: true

@@ -37,20 +37,26 @@ class Flight(Base):
     airline_icao: Mapped[str] = mapped_column(String(6))
 
 
-def airport_zones(lon=1.3642, lat=43.6287, half_angle=15, azimuth=140, distance=12_000):
+def airport_zones(
+    lon=1.3642,
+    lat=43.6287,
+    azimuth=143,
+    long_axis=10_000,
+    short_axis=350,
+):
     opp_azimuth = (azimuth + 180) % 360
-    center = (lon, lat)
 
     geod = Geod(ellps="WGS84")
-    p11 = geod.fwd(lons=lon, lats=lat, az=azimuth + half_angle, dist=distance)[:2]
-    p12 = geod.fwd(lons=lon, lats=lat, az=azimuth - half_angle, dist=distance)[:2]
-    p1 = Polygon((center, p11, p12))
 
-    p21 = geod.fwd(lons=lon, lats=lat, az=opp_azimuth + half_angle, dist=distance)[:2]
-    p22 = geod.fwd(lons=lon, lats=lat, az=opp_azimuth - half_angle, dist=distance)[:2]
-    p2 = Polygon((center, p21, p22))
+    nw0 = geod.fwd(lons=lon, lats=lat, az=opp_azimuth, dist=long_axis)[:2]
+    nw1 = geod.fwd(lons=nw0[0], lats=nw0[1], az=opp_azimuth + 90, dist=short_axis)[:2]
+    nw2 = geod.fwd(lons=nw0[0], lats=nw0[1], az=opp_azimuth - 90, dist=short_axis)[:2]
 
-    return p1, p2
+    se0 = geod.fwd(lons=lon, lats=lat, az=azimuth, dist=long_axis)[:2]
+    se1 = geod.fwd(lons=se0[0], lats=se0[1], az=azimuth + 90, dist=short_axis)[:2]
+    se2 = geod.fwd(lons=se0[0], lats=se0[1], az=azimuth - 90, dist=short_axis)[:2]
+
+    return Polygon((nw1, nw2, se1, se2))
 
 
 def airport_bounds(lon=1.3642, lat=43.6287, distance=15_000):
@@ -62,8 +68,6 @@ def airport_bounds(lon=1.3642, lat=43.6287, distance=15_000):
 
 def main(db_path="db.db"):
     fr_api = FlightRadar24API()
-
-    # bounds = fr_api.get_bounds(fr_api.get_zones()["europe"]["subzones"]["france"])
 
     y1, y2, x1, x2 = airport_bounds()
     bounds = f"{y2:.2f},{y1:.2f},{x1:.2f},{x2:.2f}"
@@ -92,6 +96,7 @@ if __name__ == "__main__":
     # Taken from https://stackoverflow.com/a/25251804
     import time
     from datetime import datetime, timezone
+
     starttime = time.monotonic()
     periodicity = 30
     logfile = "log.log"
