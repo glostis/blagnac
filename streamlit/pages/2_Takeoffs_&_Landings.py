@@ -1,18 +1,18 @@
-import streamlit as st
 import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
 from pyproj import Geod
 from shapely import Polygon
+from utils import RWY_HDG, TOFF_LAN_WHERE, db_query
 
-from utils import db_query, TOFF_LAN_WHERE, RWY_HDG
+import streamlit as st
 
 st.set_page_config(
     page_title="Blagnacoscope · Takeoffs & Landings",
     page_icon="✈️",
 )
 
-DB_CONN = st.experimental_connection("db", type="sql")
+DB_CONN = st.connection("db", type="sql")
 
 
 def intro():
@@ -24,8 +24,8 @@ only keep ADS-B pings for aircraft that are in a takeoff or landing phase at LFB
 For this, we add several conditions to the previous filtering condition for airborne aircraft:
 1. The aircraft's heading must be close to LFBO's runways heading (143° or 323°)
 2. The aircraft's altitude must be below a certain threshold (to avoid false positives of aircraft overflying LFBO at
-3. The aircraft's geographical position must be aligned with the axis of LFBO's runways
   high altitude)
+3. The aircraft's geographical position must be aligned with the axis of LFBO's runways
 """
     )
 
@@ -109,9 +109,7 @@ The heatmap above shows:
 """
     )
 
-    gdf = gpd.GeoDataFrame(
-        df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326"
-    )
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
     gdf = gdf[gdf.geometry.within(zone)]
     gdf.to_file("g.gpkg")
 

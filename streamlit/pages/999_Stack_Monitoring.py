@@ -3,16 +3,16 @@ from datetime import datetime
 
 import altair as alt
 import pytz
-import streamlit as st
+from utils import DB_PATH, LOG_PATH, TZ, db_query
 
-from utils import db_query, DB_PATH, TZ, LOG_PATH
+import streamlit as st
 
 st.set_page_config(
     page_title="Blagnacoscope · Stack Monitoring",
     page_icon="✈️",
 )
 
-DB_CONN = st.experimental_connection("db", type="sql")
+DB_CONN = st.connection("db", type="sql")
 
 
 def chart_nb_records(db_conn, time_range):
@@ -38,14 +38,10 @@ def chart_nb_records(db_conn, time_range):
     df["date"] = df.date_string.apply(_localize_dt)
 
     if df.empty:
-        st.markdown(
-            f"⚠️ :red[**Error: there is no data for the past {time_range}**] ⚠️"
-        )
+        st.markdown(f"⚠️ :red[**Error: there is no data for the past {time_range}**] ⚠️")
     else:
         c = (
-            alt.Chart(
-                df, title=f"Number of records added in DB for the past {time_range}"
-            )
+            alt.Chart(df, title=f"Number of records added in DB for the past {time_range}")
             .mark_bar()
             .encode(
                 x="date",
@@ -69,9 +65,7 @@ def db_stats(db_conn, db_path):
     df = db_query(db_conn, "select count(*) as count")
     total_count = df["count"].iloc[0]
     size = db_path.stat().st_size
-    return st.write(
-        f"#### Sqlite database:\n\n - {total_count:,} rows\n- {sizeof_fmt(size)}"
-    )
+    return st.write(f"#### Sqlite database:\n\n - {total_count:,} rows\n- {sizeof_fmt(size)}")
 
 
 def tail_log(log_path):
