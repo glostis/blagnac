@@ -3,9 +3,8 @@ from pathlib import Path
 
 from FlightRadar24 import FlightRadar24API
 from pyproj import Geod
-from shapely import Polygon
-from sqlalchemy import create_engine, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+from sqlalchemy import String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 
 class Base(DeclarativeBase):
