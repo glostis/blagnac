@@ -17,7 +17,15 @@ def airlines():
 def airports():
     fr_api = FlightRadar24API()
     airports_path = "airports.json"
-    airports = {airport.iata: airport.name.replace(" Airport", "") for airport in fr_api.get_airports()}
+    airports = dict()
+    for airport in fr_api.get_airports():
+        name = airport.name.replace(" Airport", "")
+        airports[airport.iata] = dict(
+            name=name,
+            latitude=airport.latitude,
+            longitude=airport.longitude,
+            country=airport.country,
+        )
     with open(airports_path, "w") as f:
         json.dump(airports, f)
 

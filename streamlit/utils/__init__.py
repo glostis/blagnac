@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytz
+from pyproj import Geod
+from shapely import Polygon
 
 TABLE = "flights"
 DB_PATH = Path("db.db")
@@ -24,3 +26,25 @@ def db_query(db_conn, query, where=None, groupby=None, limit=None, ttl=3600):
         sql += f" limit {limit}"
     sql += ";"
     return db_conn.query(sql, ttl=ttl)
+
+
+def airport_zones(
+    lon=1.3642,
+    lat=43.6287,
+    azimuth=RWY_HDG,
+    long_axis=15_000,
+    short_axis=400,
+):
+    opp_azimuth = (azimuth + 180) % 360
+
+    geod = Geod(ellps="WGS84")
+
+    nw0 = geod.fwd(lons=lon, lats=lat, az=opp_azimuth, dist=long_axis)[:2]
+    nw1 = geod.fwd(lons=nw0[0], lats=nw0[1], az=opp_azimuth + 90, dist=short_axis)[:2]
+    nw2 = geod.fwd(lons=nw0[0], lats=nw0[1], az=opp_azimuth - 90, dist=short_axis)[:2]
+
+    se0 = geod.fwd(lons=lon, lats=lat, az=azimuth, dist=long_axis)[:2]
+    se1 = geod.fwd(lons=se0[0], lats=se0[1], az=azimuth + 90, dist=short_axis)[:2]
+    se2 = geod.fwd(lons=se0[0], lats=se0[1], az=azimuth - 90, dist=short_axis)[:2]
+
+    return Polygon((nw1, nw2, se1, se2))

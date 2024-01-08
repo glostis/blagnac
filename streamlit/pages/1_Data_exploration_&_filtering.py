@@ -7,12 +7,12 @@ from osmnx import features_from_bbox
 from pydeck.types import String
 from pyproj import Geod
 from scipy.signal import find_peaks
-from utils import AIRBORNE_WHERE, db_query
+from utils import AIRBORNE_WHERE, TOFF_LAN_WHERE, airport_zones, db_query
 
 import streamlit as st
 
 st.set_page_config(
-    page_title="Blagnacoscope · Data exploration",
+    page_title="Blagnacoscope · Data exploration & filtering",
     page_icon="✈️",
 )
 
@@ -325,12 +325,80 @@ On the heatmap, you can see:
     )
 
 
+def filtering(DB_CONN):
+    st.header("Filtering takeoffs and landings", divider=True)
+    st.markdown(
+        f"""
+Now that we've seen the properties of the data at hand, we can get down to business and start filtering the data to
+only keep ADS-B pings for aircraft that are in a takeoff or landing phase at LFBO.
+
+For this, we add several conditions to the previous filtering condition for airborne aircraft:
+1. The aircraft's heading must be close to LFBO's runways heading (143° or 323°)
+2. The aircraft's altitude must be below a certain threshold (to avoid false positives of aircraft overflying LFBO at
+  high altitude)
+3. The aircraft's geographical position must be aligned with the axis of LFBO's runways
+
+The first two filtering conditions can be applied with the following SQL `where` clause:
+```
+{TOFF_LAN_WHERE}
+```
+The third one is a bit more tricky. Ideally, it would also be done in SQL using
+[Spatialite](https://www.gaia-gis.it/fossil/libspatialite/index) (a geospatial extension for SQLite), but loading
+Spatialite in SQLAlchemy is a bit of a pain (requires a python version compiled to allow for SQLite extensions for
+example), and I can't be bothered with it right now.
+We'll therefore stick with a plain old `point.within(polygon)` in [shapely](https://shapely.readthedocs.io/) /
+[geopandas](https://geopandas.org/en/stable/) after the SQL query.
+"""
+    )
+
+    df = db_query(DB_CONN, "select *", where=TOFF_LAN_WHERE)
+    zone = airport_zones()
+    x, y = zone.exterior.coords.xy
+    coordinates = [(xx, yy) for xx, yy in zip(x, y)]
+    df2 = pd.DataFrame({"coordinates": [coordinates]})
+
+    st.pydeck_chart(
+        pdk.Deck(
+            map_style=None,
+            initial_view_state=pdk.ViewState(
+                latitude=43.62,
+                longitude=1.36,
+                zoom=9.8,
+            ),
+            layers=[
+                pdk.Layer(
+                    "HeatmapLayer",
+                    data=df,
+                    get_position="[longitude, latitude]",
+                    opacity=0.9,
+                    radius_pixels=20,
+                ),
+                pdk.Layer(
+                    "PolygonLayer",
+                    data=df2,
+                    get_polygon="coordinates",
+                    get_fill_color=(21, 130, 55, 100),
+                ),
+            ],
+        )
+    )
+
+    st.markdown(
+        """
+The heatmap above shows:
+- the points resulting from the SQL query shown above
+- the polygon that is used afterwards in python to only keep points within it
+"""
+    )
+
+
 # Dirty hack to make Altair/Vega chart tooltips still visible when viewing a chart in fullscreen/expanded mode
 # (taken from https://discuss.streamlit.io/t/tool-tips-in-fullscreen-mode-for-charts/6800/9)
 st.markdown("<style>#vg-tooltip-element{z-index: 1000051}</style>", unsafe_allow_html=True)
 
-st.title("Data exploration")
+st.title("Data exploration & filtering")
 intro()
 table_structure(DB_CONN)
 heatmap_section(DB_CONN)
 histograms(DB_CONN)
+filtering(DB_CONN)

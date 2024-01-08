@@ -74,6 +74,10 @@ def tail_log(log_path):
     st.text(p.stdout.decode("utf-8").strip())
 
 
+# Dirty hack to make Altair/Vega chart tooltips still visible when viewing a chart in fullscreen/expanded mode
+# (taken from https://discuss.streamlit.io/t/tool-tips-in-fullscreen-mode-for-charts/6800/9)
+st.markdown("<style>#vg-tooltip-element{z-index: 1000051}</style>", unsafe_allow_html=True)
+
 chart_nb_records(DB_CONN, "day")
 chart_nb_records(DB_CONN, "week")
 st.divider()
