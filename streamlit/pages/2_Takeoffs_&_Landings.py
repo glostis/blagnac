@@ -4,10 +4,13 @@ import altair as alt
 import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
+from matplotlib import colormaps
+from scipy import stats
 from streamlit_extras.dataframe_explorer import dataframe_explorer
 from utils import TOFF_LAN_WHERE, airport_zones, db_query
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Blagnacoscope · Takeoffs & Landings",
@@ -163,20 +166,52 @@ def map(df):
     data["count_norm"] = data["fr_id"].apply(lambda x: (x - count_min) / count_max)
     data["width"] = data["count_norm"].apply(lambda x: 2 + x * 30)
 
-    view = pdk.View(type="_GlobeView", controller=True, width=1000, height=700)
+    gradient = colormaps["magma"].colors
+
+    def _count_to_color(count, count_series):
+        rank = stats.percentileofscore(count_series, count, kind="weak")
+        index = int(rank / 100 * len(gradient)) - 1
+        print(index, len(gradient))
+        color = gradient[index]
+        color = [int(el * 255) for el in color]
+        return color
+
+    data["color"] = data["count_norm"].apply(lambda x: _count_to_color(x, data["count_norm"]))
+    data["color_start"] = data["color"].apply(lambda x: x + [25])
+    data["color_end"] = data["color"].apply(lambda x: x + [255])
+
+    view = pdk.View(type="_GlobeView", controller=True)
 
     arc_layer = pdk.Layer(
         "ArcLayer",
         data=data,
         great_circle=True,
         get_width="width",
-        get_height=0.5,
+        get_height=0.3,
         get_source_position=["longitude_tls", "latitude_tls"],
         get_target_position=["longitude", "latitude"],
-        get_source_color="[255, 255, count_norm * 255, 150]",
-        get_target_color="[255, 255, count_norm * 255, 150]",
+        get_source_color="color_start",
+        get_target_color="color_end",
         pickable=True,
         auto_highlight=True,
+    )
+
+    geojson_layer = pdk.Layer(
+        "GeoJsonLayer",
+        "https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson",
+        get_fill_color=[52, 51, 50],
+        stroked=True,
+        get_line_color=[69, 69, 69],
+        get_line_width=1000,
+        line_width_min_pixels=2,
+        line_joint_rounded=True,
+    )
+
+    solid_layer = pdk.Layer(
+        "PolygonLayer",
+        data=pd.DataFrame({"coordinates": [[[-180, 90], [0, 90], [180, 90], [180, -90], [0, -90], [-180, -90]]]}),
+        get_polygon="coordinates",
+        get_fill_color=[25, 26, 26],
     )
 
     view_state = pdk.ViewState(
@@ -187,14 +222,17 @@ def map(df):
 
     r = pdk.Deck(
         views=[view],
-        layers=[arc_layer],
+        layers=[solid_layer, arc_layer, geojson_layer],
         initial_view_state=view_state,
         tooltip={"text": "{connecting_airport}"},
-        # map_provider=None,
+        map_provider=None,
         parameters={"cull": True},
     )
 
-    st.pydeck_chart(r)
+    # Streamlit's pydeck integration doesn't handle non-MapView views.
+    # This workaround uses raw HTML instead, which gets rendered as in iframe in Streamlit.
+    # (see https://github.com/streamlit/streamlit/issues/2302)
+    components.html(r.to_html(as_string=True), height=800)
 
 
 # Dirty hack to make Altair/Vega chart tooltips still visible when viewing a chart in fullscreen/expanded mode
@@ -206,8 +244,8 @@ df = db_query(DB_CONN, "select *", where=TOFF_LAN_WHERE)
 df = aggregate_takeoffs_landings(df)
 filtered_df = dataframe_explorer(df)
 st.dataframe(filtered_df, hide_index=True, use_container_width=True)
-# stats_time(filtered_df)
+stats_time(filtered_df)
 stats_airlines(filtered_df)
-# stats_airports(filtered_df)
-# stats_aircraft(filtered_df)
+stats_airports(filtered_df)
+stats_aircraft(filtered_df)
 map(filtered_df)
