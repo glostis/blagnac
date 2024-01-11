@@ -13,7 +13,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="Blagnacoscope · Takeoffs & Landings",
+    page_title="Blagnacoscope · Airports, Airlines, Aircraft",
     page_icon="✈️",
     layout="wide",
 )
@@ -291,7 +291,7 @@ def map(airports):
 # (taken from https://discuss.streamlit.io/t/tool-tips-in-fullscreen-mode-for-charts/6800/9)
 st.markdown("<style>#vg-tooltip-element{z-index: 1000051}</style>", unsafe_allow_html=True)
 
-st.title("Takeoffs & Landings")
+st.title("Airports, Airlines, Aircraft")
 df = db_query(DB_CONN, "select *", where=TOFF_LAN_WHERE)
 df = aggregate_takeoffs_landings(df)
 filtered_df = dataframe_explorer(df)
