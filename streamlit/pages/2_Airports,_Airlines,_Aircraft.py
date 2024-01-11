@@ -158,11 +158,13 @@ def map(airports):
         options=["Globe", "Map"],
         captions=["3D globe", "Flat map, that you can tilt and rotate using Ctrl+click"],
     )
-    data = (
-        airports[airports["connecting_airport"] != " (N/A)"]
-        .groupby("connecting_airport", as_index=False)
-        .agg({"fr_id": "count"})
-    )
+    split_rwy_event = st.toggle("Split takeoffs and landings", disabled=view_mode == "Globe")
+
+    groupby = ["connecting_airport"]
+    if split_rwy_event:
+        groupby.append("rwy_event")
+    data = airports[airports["connecting_airport"] != " (N/A)"].groupby(groupby, as_index=False).agg({"fr_id": "count"})
+
     data["airport_code"] = data["connecting_airport"].apply(lambda x: x[-4:-1])
     data["latitude"] = data["airport_code"].apply(lambda x: AIRPORTS[x]["latitude"])
     data["longitude"] = data["airport_code"].apply(lambda x: AIRPORTS[x]["longitude"])
@@ -172,29 +174,35 @@ def map(airports):
     count_min = data["fr_id"].min()
     data["count_norm"] = data["fr_id"].apply(lambda x: (x - count_min) / count_max)
     data["width"] = data["count_norm"].apply(lambda x: 2 + x * 30)
+    if not split_rwy_event:
+        data["rwy_event"] = "N/A"
+    data["tilt"] = data["rwy_event"].apply(lambda x: {"takeoff": 15, "landing": -15}.get(x, 0))
 
-    def _count_to_info(count):
-        info = f"{count} flight"
+    def _count_to_info(row):
+        count = row["fr_id"]
+        event = row["rwy_event"]
+        word = event if event in {"takeoff", "landing"} else "flight"
         if count > 1:
-            info += "s"
+            word += "s"
         pct = count / data["fr_id"].sum() * 100
-        info += f" ({pct:.2f}%)"
-        return info
+        return f"{count} {word} ({pct:.2f}%)"
 
-    data["info"] = data["fr_id"].apply(_count_to_info)
+    data["info"] = data.apply(_count_to_info, axis=1)
 
-    gradient = colormaps["magma"].colors
-
-    def _count_to_color(count, count_series):
+    def _count_to_color(count, count_series, rwy_event):
+        gradient = colormaps[{"takeoff": "Reds", "landing": "Greens"}.get(rwy_event, "cividis")]
         rank = stats.percentileofscore(count_series, count, kind="weak")
-        index = int(rank / 100 * len(gradient)) - 1
-        color = gradient[index]
+        color = gradient(rank / 100)[:3]
         color = [int(el * 255) for el in color]
         return color
 
-    data["color"] = data["count_norm"].apply(lambda x: _count_to_color(x, data["count_norm"]))
+    data["color"] = data.apply(
+        lambda row: _count_to_color(row["count_norm"], data["count_norm"], row["rwy_event"]), axis=1
+    )
     data["color_start"] = data["color"].apply(lambda x: x + [25])
     data["color_end"] = data["color"].apply(lambda x: x + [255])
+
+    st.dataframe(data)
 
     arc_layer = pdk.Layer(
         "ArcLayer",
@@ -202,6 +210,7 @@ def map(airports):
         great_circle=(view_mode == "Globe"),
         get_width="width",
         get_height=0.3,
+        get_tilt="tilt",
         get_source_position=["longitude_tls", "latitude_tls"],
         get_target_position=["longitude", "latitude"],
         get_source_color="color_start",
@@ -258,8 +267,6 @@ def map(airports):
         latitude=43.62,
         longitude=1.36,
         zoom=4,
-        pitch=45,
-        bearing=60,
     )
 
     deck_args = dict(
