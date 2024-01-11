@@ -152,9 +152,16 @@ def stats_aircraft(df):
     )
 
 
-def map(df):
+def map(airports):
+    view_mode = st.radio(
+        "Select display mode",
+        options=["Globe", "Map"],
+        captions=["3D globe", "Flat map, that you can tilt and rotate using Ctrl+click"],
+    )
     data = (
-        df[df["connecting_airport"] != " (N/A)"].groupby("connecting_airport", as_index=False).agg({"fr_id": "count"})
+        airports[airports["connecting_airport"] != " (N/A)"]
+        .groupby("connecting_airport", as_index=False)
+        .agg({"fr_id": "count"})
     )
     data["airport_code"] = data["connecting_airport"].apply(lambda x: x[-4:-1])
     data["latitude"] = data["airport_code"].apply(lambda x: AIRPORTS[x]["latitude"])
@@ -166,12 +173,21 @@ def map(df):
     data["count_norm"] = data["fr_id"].apply(lambda x: (x - count_min) / count_max)
     data["width"] = data["count_norm"].apply(lambda x: 2 + x * 30)
 
+    def _count_to_info(count):
+        info = f"{count} flight"
+        if count > 1:
+            info += "s"
+        pct = count / data["fr_id"].sum() * 100
+        info += f" ({pct:.2f}%)"
+        return info
+
+    data["info"] = data["fr_id"].apply(_count_to_info)
+
     gradient = colormaps["magma"].colors
 
     def _count_to_color(count, count_series):
         rank = stats.percentileofscore(count_series, count, kind="weak")
         index = int(rank / 100 * len(gradient)) - 1
-        print(index, len(gradient))
         color = gradient[index]
         color = [int(el * 255) for el in color]
         return color
@@ -180,12 +196,10 @@ def map(df):
     data["color_start"] = data["color"].apply(lambda x: x + [25])
     data["color_end"] = data["color"].apply(lambda x: x + [255])
 
-    view = pdk.View(type="_GlobeView", controller=True)
-
     arc_layer = pdk.Layer(
         "ArcLayer",
         data=data,
-        great_circle=True,
+        great_circle=(view_mode == "Globe"),
         get_width="width",
         get_height=0.3,
         get_source_position=["longitude_tls", "latitude_tls"],
@@ -196,43 +210,81 @@ def map(df):
         auto_highlight=True,
     )
 
-    geojson_layer = pdk.Layer(
-        "GeoJsonLayer",
-        "https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson",
-        get_fill_color=[52, 51, 50],
-        stroked=True,
-        get_line_color=[69, 69, 69],
-        get_line_width=1000,
-        line_width_min_pixels=2,
-        line_joint_rounded=True,
-    )
+    # This is needed in GlobeView, because otherwise the globe is empty (no basemap) and you can see through it.
+    globe_layers = [
+        pdk.Layer(
+            "PolygonLayer",
+            data=pd.DataFrame({"coordinates": [[[-180, 90], [0, 90], [180, 90], [180, -90], [0, -90], [-180, -90]]]}),
+            get_polygon="coordinates",
+            get_fill_color=[25, 26, 26],
+        ),
+        pdk.Layer(
+            "GeoJsonLayer",
+            "https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_50m_admin_0_scale_rank.geojson",
+            get_fill_color=[52, 51, 50],
+            stroked=True,
+            get_line_color=[69, 69, 69],
+            get_line_width=1000,
+            line_width_min_pixels=2,
+            line_joint_rounded=True,
+        ),
+    ]
 
-    solid_layer = pdk.Layer(
-        "PolygonLayer",
-        data=pd.DataFrame({"coordinates": [[[-180, 90], [0, 90], [180, 90], [180, -90], [0, -90], [-180, -90]]]}),
-        get_polygon="coordinates",
-        get_fill_color=[25, 26, 26],
-    )
+    # This is completely illegible because text labels are too dense and overlap one another.
+    # There's a CollisionFilterExtension in deck.gl to solve this problem, but I haven't found
+    # a way to make it work with `pydeck` (https://github.com/visgl/deck.gl/discussions/8329).
+
+    # text_df = pd.DataFrame.from_dict(AIRPORTS, orient="index")
+    # text_df["iata"] = text_df.index
+    # text_df["fullname"] = text_df.apply(lambda x: f"{x['name']} ({x['iata']})", axis=1)
+    # text_df["coordinates"] = text_df.apply(lambda row: (row.longitude, row.latitude), axis=1)
+    # text_df = text_df[text_df["iata"].apply(lambda x: x in set(data["airport_code"]))]
+    # airports_layer = (
+    #     pdk.Layer(
+    #         "TextLayer",
+    #         data=text_df,
+    #         character_set=String("auto"),
+    #         get_position="coordinates",
+    #         get_color=(255, 255, 255),
+    #         get_size=10,
+    #         get_text="fullname",
+    #         outline_width=40,
+    #         outline_color=(0, 0, 0),
+    #         font_settings={"sdf": True, "cutoff": 0.1},
+    #     ),
+    # )
 
     view_state = pdk.ViewState(
         latitude=43.62,
         longitude=1.36,
-        zoom=5,
+        zoom=4,
+        pitch=45,
+        bearing=60,
     )
 
-    r = pdk.Deck(
-        views=[view],
-        layers=[solid_layer, arc_layer, geojson_layer],
+    deck_args = dict(
         initial_view_state=view_state,
-        tooltip={"text": "{connecting_airport}"},
-        map_provider=None,
-        parameters={"cull": True},
+        tooltip={"html": "{connecting_airport}<br/>{info}"},
     )
+    if view_mode == "Globe":
+        d = pdk.Deck(
+            views=pdk.View(type="_GlobeView", controller=True),
+            layers=globe_layers + [arc_layer],
+            map_provider=None,
+            **deck_args,
+        )
 
-    # Streamlit's pydeck integration doesn't handle non-MapView views.
-    # This workaround uses raw HTML instead, which gets rendered as in iframe in Streamlit.
-    # (see https://github.com/streamlit/streamlit/issues/2302)
-    components.html(r.to_html(as_string=True), height=800)
+        # Streamlit's pydeck integration doesn't handle non-MapView views.
+        # This workaround uses raw HTML instead, which gets rendered as in iframe in Streamlit.
+        # (see https://github.com/streamlit/streamlit/issues/2302)
+        components.html(d.to_html(as_string=True), height=800)
+    else:
+        d = pdk.Deck(
+            map_style=None,
+            layers=[arc_layer],
+            **deck_args,
+        )
+        st.pydeck_chart(d)
 
 
 # Dirty hack to make Altair/Vega chart tooltips still visible when viewing a chart in fullscreen/expanded mode
