@@ -73,8 +73,17 @@ def aircraft():
 
     aircraft_dict.update(df.groupby("ICAO")["Model"].agg(_aggregate_strings).to_dict())
 
+    url = "https://opensky-network.org/datasets/metadata/doc8643AircraftTypes.csv"
+
+    df = pd.read_csv(url)
+    type_dict = df.groupby('Designator')['AircraftDescription'].first().to_dict()
+
+    final_dict = {}
+    for icao, model in aircraft_dict.items():
+        final_dict[icao] = {"model": model, "type": type_dict.get(icao, "Unknown")}
+
     with open("aircraft.json", "w") as f:
-        json.dump(aircraft_dict, f)
+        json.dump(final_dict, f)
 
 
 if __name__ == "__main__":

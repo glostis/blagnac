@@ -71,7 +71,7 @@ def radial_histogram(db_conn, column):
 
     # Add text labels next to the most prominent peaks of the histogram
 
-    peaks, *_ = find_peaks(df["count"].values, prominence=250, distance=5)
+    peaks, *_ = find_peaks(df["count"].values, prominence=500, distance=5)
     peaks = [int(heading) for heading in peaks]
 
     c2 = (

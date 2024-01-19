@@ -1,13 +1,12 @@
-import json
+from collections import Counter
 
 import altair as alt
-import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
 from matplotlib import colormaps
 from scipy import stats
 from streamlit_extras.dataframe_explorer import dataframe_explorer
-from utils import TOFF_LAN_WHERE, airport_zones, db_query
+from utils import AIRPORTS, aggregate_takeoffs_landings
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -18,88 +17,9 @@ st.set_page_config(
     layout="wide",
 )
 
-DB_CONN = st.connection("db", type="sql")
-
-with open("data/airlines.json") as f:
-    AIRLINES = json.load(f)
-
-with open("data/airports.json") as f:
-    AIRPORTS = json.load(f)
-
-with open("data/aircraft.json") as f:
-    AIRCRAFT = json.load(f)
-
-
-def aggregate_takeoffs_landings(df):
-    zone = airport_zones()
-    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
-    gdf = gdf[gdf.geometry.within(zone)]
-
-    gdf["datetime"] = pd.to_datetime(gdf["time"], unit="s", utc=True).dt.tz_convert("Europe/Paris")
-    gdf["hour"] = gdf["datetime"].dt.hour
-    gdf["ping_delta_t"] = gdf.groupby("fr_id")[["time"]].diff().fillna(0)
-    gdf["subflight_nb"] = (gdf["ping_delta_t"] > 3 * 60).cumsum()
-    gdf["subflight_id"] = gdf.apply(lambda x: f"{x['fr_id']}_{x['subflight_nb']}", axis=1)
-    cols = [
-        "fr_id",
-        "aircraft_code",
-        "registration",
-        "time",
-        "origin_airport_iata",
-        "destination_airport_iata",
-        "number",
-        "airline_iata",
-        "callsign",
-        "airline_icao",
-        "datetime",
-        "hour",
-        "subflight_id",
-    ]
-
-    agg_dict = {column: "first" for column in cols}
-    agg_dict.update({"vertical_speed": "mean"})
-    toff_land: pd.DataFrame = gdf.groupby("subflight_id").agg(agg_dict)
-    toff_land["rwy_event"] = toff_land["vertical_speed"].apply(lambda x: "takeoff" if x >= 0 else "landing")
-    toff_land["airline"] = toff_land["airline_icao"].apply(lambda x: f"{AIRLINES.get(x, '')} ({x})")
-    toff_land["aircraft"] = toff_land["aircraft_code"].apply(lambda x: f"{AIRCRAFT.get(x, '')} ({x})")
-
-    def _get_airport_name(airport_iata):
-        return f"{AIRPORTS.get(airport_iata, {'name': ''})['name']} ({airport_iata})"
-
-    toff_land["origin_airport"] = toff_land["origin_airport_iata"].apply(_get_airport_name)
-    toff_land["destination_airport"] = toff_land["destination_airport_iata"].apply(_get_airport_name)
-
-    def _get_connecting_airport(row):
-        match row["rwy_event"]:
-            case "landing":
-                connecting_airport = row["origin_airport"]
-            case "takeoff":
-                connecting_airport = row["destination_airport"]
-            case _:
-                connecting_airport = "N/A"
-        return connecting_airport
-
-    toff_land["connecting_airport"] = toff_land.apply(_get_connecting_airport, axis=1)
-
-    return toff_land[
-        [
-            "datetime",
-            "airline",
-            "aircraft",
-            "origin_airport",
-            "destination_airport",
-            "registration",
-            "callsign",
-            "number",
-            "rwy_event",
-            "hour",
-            "connecting_airport",
-            "fr_id",
-        ]
-    ]
-
 
 def stats_time(df):
+    st.subheader("Days and times", divider=True)
     # TODO: not very satisfying to have to use `ambiguous=True` here...
     df["dt"] = df["datetime"].dt.tz_localize("Europe/Paris", ambiguous=True)
     c = alt.Chart(df).mark_bar().encode(x=alt.X("hours(dt):O"), y="count()", color="rwy_event").interactive()
@@ -109,13 +29,17 @@ def stats_time(df):
 
 
 def stats_airlines(df):
+    st.subheader("Airlines", divider=True)
+
+    def _top_airport(airports):
+        return Counter(airports).most_common(1)[0][0]
+
     d = df.groupby("airline").agg(
-        {
-            "fr_id": lambda x: round(len(x) / len(df) * 100, 2),
-            "registration": "nunique",
-            "aircraft": "nunique",
-            "origin_airport": "nunique",
-        }
+        fr_id=pd.NamedAgg("fr_id", lambda x: round(len(x) / len(df) * 100, 2)),
+        registration=pd.NamedAgg("registration", "nunique"),
+        aircraft=pd.NamedAgg("aircraft", "nunique"),
+        connecting_airport=pd.NamedAgg("connecting_airport", "nunique"),
+        top_airport=pd.NamedAgg("connecting_airport", _top_airport),
     )
     st.dataframe(
         d.sort_values(by="fr_id", ascending=False).rename(
@@ -123,7 +47,7 @@ def stats_airlines(df):
                 "fr_id": "% of flights",
                 "registration": "# of aircraft",
                 "aircraft": "# of aircraft models",
-                "origin_airport": "# of destinations",
+                "connecting_airport": "# of destinations",
             }
         ),
         use_container_width=True,
@@ -131,6 +55,7 @@ def stats_airlines(df):
 
 
 def stats_airports(df):
+    st.subheader("Airports", divider=True)
     cols = st.columns(3)
     for col, var, data, title in zip(
         cols,
@@ -139,24 +64,66 @@ def stats_airports(df):
         ["flights", "landings", "takeoffs"],
     ):
         col.dataframe(
-            data.groupby(var)["fr_id"].count().sort_values(ascending=False).rename(f"% of {title}") / len(df) * 100,
+            data.groupby(var)["fr_id"].count().sort_values(ascending=False) / len(df) * 100,
+            column_config={
+                "fr_id": st.column_config.NumberColumn(label=f"% of {title}", format="%.2f"),
+                var: st.column_config.Column(var.replace("_", " ").capitalize()),
+            },
         )
+        if var == "connecting_airport":
+            st.caption(
+                "What are connecting airports?",
+                help=(
+                    "Connecting airports are the destination airports of flights taking off from Toulouse, "
+                    "and the origin airports of flights landing in Toulouse."
+                ),
+            )
 
 
 def stats_aircraft(df):
-    st.dataframe(
+    st.subheader("Aircraft", divider=True)
+    col1, col2 = st.columns((1, 2))
+    col1.dataframe(
         df.groupby("aircraft")
         .agg({"fr_id": "count", "registration": "nunique"})
         .sort_values(by="fr_id", ascending=False)
-        .rename(columns={"fr_id": "# of flights", "registration": "# of aircraft"})
+        .rename(columns={"fr_id": "# of flights", "registration": "# of aircraft"}),
+        column_config={"aircraft": st.column_config.Column("Aircraft type")},
+    )
+
+    def _top_airport(airports):
+        return Counter(airports).most_common(1)[0][0]
+
+    def _airline_agg(airlines):
+        airlines = [airline for airline in airlines if airline != " (N/A)"]
+        if not airlines:
+            return " (N/A)"
+        return Counter(airlines).most_common(1)[0][0]
+
+    col2.dataframe(
+        df.groupby("registration")
+        .agg({"aircraft": "first", "airline": _airline_agg, "fr_id": "count", "connecting_airport": _top_airport})
+        .sort_values(by="fr_id", ascending=False)
+        .rename(
+            columns={
+                "fr_id": "# of flights",
+                "aircraft": "Aircraft",
+                "airline": "Airline",
+                "connecting_airport": "Top airport",
+            }
+        ),
+        column_config={"registration": st.column_config.Column("Aircraft registration")},
+        use_container_width=True,
     )
 
 
 def map(airports):
+    st.subheader("Map of origins/destinations", divider=True)
     view_mode = st.radio(
         "Select display mode",
         options=["Globe", "Map"],
         captions=["3D globe", "Flat map, that you can tilt and rotate using Ctrl+click"],
+        horizontal=True,
     )
     split_rwy_event = st.toggle("Split takeoffs and landings", disabled=view_mode == "Globe")
 
@@ -201,8 +168,6 @@ def map(airports):
     )
     data["color_start"] = data["color"].apply(lambda x: x + [25])
     data["color_end"] = data["color"].apply(lambda x: x + [255])
-
-    st.dataframe(data)
 
     arc_layer = pdk.Layer(
         "ArcLayer",
@@ -299,8 +264,18 @@ def map(airports):
 st.markdown("<style>#vg-tooltip-element{z-index: 1000051}</style>", unsafe_allow_html=True)
 
 st.title("Airports, Airlines, Aircraft")
-df = db_query(DB_CONN, "select *", where=TOFF_LAN_WHERE)
-df = aggregate_takeoffs_landings(df)
+st.markdown(
+    """
+This page is an interactive dashboard that can be used to dig into the takeoffs / landings data.
+
+You can apply filters on the table just below on the columns of your choice, and these filters will be refleted
+on all the tables and the map below.
+
+For example, filter on `airline = EZY` to see all destinations of easyJet flights, or filter on `hour < 6` to see
+flights taking off or landing at nights.
+"""
+)
+df = aggregate_takeoffs_landings()
 filtered_df = dataframe_explorer(df)
 st.dataframe(filtered_df, hide_index=True, use_container_width=True)
 stats_time(filtered_df)
