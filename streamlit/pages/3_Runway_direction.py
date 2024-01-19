@@ -1,4 +1,6 @@
 import math
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import altair as alt
 import pandas as pd
@@ -14,6 +16,53 @@ st.set_page_config(
 # Dirty hack to make Altair/Vega chart tooltips still visible when viewing a chart in fullscreen/expanded mode
 # (taken from https://discuss.streamlit.io/t/tool-tips-in-fullscreen-mode-for-charts/6800/9)
 st.markdown("<style>#vg-tooltip-element{z-index: 1000051}</style>", unsafe_allow_html=True)
+
+
+def _scrape_wind_data(start: datetime, end: datetime):
+    url = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos.py?"
+    url += "station=LFBO&"
+    url += (
+        # `drct` is wind direction, and `snkt` is wind speed in knots
+        f"data=drct&data=sknt&"
+        f"year1={start.year}&"
+        f"month1={start.month}&"
+        f"day1={start.day}&"
+        f"year2={end.year}&"
+        f"month2={end.month}&"
+        f"day2={end.day}&"
+        f"tz=Etc%2FUTC&format=onlycomma&latlon=no&elev=no&"
+        f"missing=null&trace=T&direct=no&report_type=3&report_type=4"
+    )
+    df = pd.read_csv(url).rename(columns={"valid": "datetime", "drct": "wind_direction", "sknt": "wind_speed"})
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    return df
+
+
+def _get_wind_data(start: datetime, end: datetime):
+    start = start.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    end = end.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+    csv_path = Path("data") / "lfbo_wind.csv"
+    scraped = []
+    if csv_path.is_file():
+        df = pd.read_csv(csv_path)
+        df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+        c_start = df["datetime"].min()
+        c_end = df["datetime"].max()
+        if start >= c_start and end - timedelta(minutes=30) <= c_end:
+            return df
+        else:
+            if start < c_start:
+                scraped.append(_scrape_wind_data(start, c_start))
+            if end - timedelta(minutes=30) > c_end:
+                scraped.append(_scrape_wind_data(c_end, end))
+        scraped.append(df)
+    else:
+        scraped.append(_scrape_wind_data(start, end))
+    all = pd.concat(scraped)
+    all = all.drop_duplicates(keep=False)
+    all = all.sort_values(by="datetime")
+    all.to_csv(csv_path, index=False)
+    return all
 
 
 def intro():
@@ -206,7 +255,7 @@ def runway_vs_wind(events, wind):
 st.title("Runway direction")
 intro()
 events = aggregate_takeoffs_landings()
-wind = pd.read_csv("data/lfbo_wind.csv")
+wind = _get_wind_data(events["datetime"].min(), events["datetime"].max())
 flight_direction_stats(events)
 wind_stats(wind)
 runway_vs_wind(events, wind)

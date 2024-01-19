@@ -4,3 +4,4 @@
 .env
 cache/
 *.qgz
+data/lfbo_wind.csv
