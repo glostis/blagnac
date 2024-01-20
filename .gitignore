@@ -2,3 +2,6 @@
 *.log
 .python-version
 .env
+cache/
+*.qgz
+data/lfbo_wind.csv
