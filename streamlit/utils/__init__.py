@@ -104,6 +104,8 @@ def aggregate_takeoffs_landings():
     toff_land["aircraft_type"] = toff_land["aircraft_code"].apply(lambda x: AIRCRAFT.get(x, {}).get("type", "Unknown"))
 
     def _get_airport_name(airport_iata):
+        if not airport_iata:
+            airport_iata = "N/A"
         return f"{AIRPORTS.get(airport_iata, {'name': ''})['name']} ({airport_iata})"
 
     toff_land["origin_airport"] = toff_land["origin_airport_iata"].apply(_get_airport_name)
