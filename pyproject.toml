@@ -6,7 +6,7 @@ authors = [""]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 flightradarapi = "^1.3.24"
 geopandas = "^0.14.1"
 osmnx = "^1.8.0"
@@ -18,6 +18,9 @@ shapely = "^2.0.2"
 sqlalchemy = "^2.0.24"
 streamlit = "^1.29.0"
 streamlit-extras = "^0.3.6"
+httpx = "*"
+tqdm = "^4.66.2"
+fr24 = { git = "https://github.com/cathaypacific8747/fr24" }
 
 [build-system]
 requires = ["poetry-core"]
