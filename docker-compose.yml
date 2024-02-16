@@ -24,6 +24,17 @@ services:
     command: python scrape.py
     restart: unless-stopped
 
+  scraper-history:
+    image: blagnac
+    build: ./
+    profiles: ["history"]
+    volumes:
+      - ./:/app/
+    command: python scrape_history.py
+    environment:
+      - fr24_username
+      - fr24_password
+
 
 networks:
   default:
