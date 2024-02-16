@@ -17,14 +17,22 @@ from httpx import HTTPStatusError
 from tqdm import tqdm
 
 
+def log(message):
+    with open("fr24_log.log", "a") as f:
+        f.write(f"{datetime.now().isoformat()} - {message}\n")
+
+
 async def catch_flights_of_day(client, year, month, day, interval=30):
     timestamp = int(datetime(year, month, day, tzinfo=timezone.utc).timestamp())
     duration = 7
     all_records = []
-    for i in tqdm(range(int(24 * 60 * 60 / interval))):
+    for i in tqdm(range(int(24 * 60 * 60 / interval)), disable=True):
         ts = timestamp + i * interval
-        livefeed_records = await query_playback_snapshot(client, ts, duration)
-        all_records.extend(livefeed_records)
+        try:
+            livefeed_records = await query_playback_snapshot(client, ts, duration)
+            all_records.extend(livefeed_records)
+        except AssertionError:
+            log(f"Failed for {ts} / {datetime.utcfromtimestamp(ts).isoformat()}")
 
     fp = client.cache_dir / "feed" / "playback" / f"{year}{month}{day}.parquet"
     pq.write_table(pa.Table.from_pylist(all_records, schema=livefeed_schema), fp)
@@ -79,11 +87,9 @@ async def async_main():
         end_dt = datetime(2024, 1, 31)
         dt = start_dt
         while dt <= end_dt:
-            now = datetime.now()
-            print(f"Starting {dt.date()} at {now.isoformat()}")
+            log(f"Starting {dt.date()}")
             await catch_flights_of_day(fr24, dt.year, dt.month, dt.day)
-            elapsed = (now - datetime.now()).seconds / 60
-            print(f"Finished {dt.date()} in {elapsed} minutes")
+            log(f"Finished {dt.date()}")
             dt = dt + timedelta(days=1)
 
 
