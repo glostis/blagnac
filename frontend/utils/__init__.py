@@ -63,6 +63,16 @@ def airport_zones(
     return Polygon((nw1, nw2, se1, se2))
 
 
+def _fr24_pings_to_flights():
+    import duckdb
+
+    df = duckdb.sql(f"SELECT * FROM 'fr24_history/feed/playback/*.parquet' WHERE {TOFF_LAN_WHERE}").df()
+    zone = airport_zones()
+    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
+    gdf = gdf[gdf.geometry.within(zone)]
+    gdf.groupby("flightid", as_index=False)["timestamp"].first().to_csv("flights_to_dl.csv", index=False)
+
+
 def aggregate_takeoffs_landings():
     import streamlit as st
 

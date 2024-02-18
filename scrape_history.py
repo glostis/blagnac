@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from fr24.core import FR24
@@ -22,7 +23,7 @@ def log(message):
         f.write(f"{datetime.now().isoformat()} - {message}\n")
 
 
-async def catch_flights_of_day(client, year, month, day, interval=30):
+async def catch_pings_of_day(client, year, month, day, interval=30):
     timestamp = int(datetime(year, month, day, tzinfo=timezone.utc).timestamp())
     duration = 7
     all_records = []
@@ -63,7 +64,7 @@ async def query_playback_snapshot(
     return [livefeed_flightdata_dict(lfr) for lfr in livefeed_playback_response_parse(data).flights_list]
 
 
-async def get_flights_playback(client, flightid, timestamp):
+async def get_flight_playback(client, flightid, timestamp):
     flight_id = f"{flightid:x}"
     flight_id = flight_id.lower()
     rootdir = client.cache_dir / "playback"
@@ -76,26 +77,41 @@ async def get_flights_playback(client, flightid, timestamp):
             timestamp=timestamp,
             overwrite=False,
         )
-    except HTTPStatusError:
-        pass
+    except HTTPStatusError as e:
+        log(f"HTTPStatusError on {flightid} {timestamp}")
+        print(e)
+        raise
     await asyncio.sleep(0.2)
 
 
-async def async_main():
-    async with FR24(cache_dir="fr24_history") as fr24:
+async def async_get_pings():
+    print("Getting pings")
+    async with FR24(cache_dir="fr24_pings") as fr24:
         start_dt = datetime(2023, 6, 1)
         end_dt = datetime(2024, 1, 31)
         dt = start_dt
         while dt <= end_dt:
             log(f"Starting {dt.date()}")
-            await catch_flights_of_day(fr24, dt.year, dt.month, dt.day)
+            await catch_pings_of_day(fr24, dt.year, dt.month, dt.day)
             log(f"Finished {dt.date()}")
             dt = dt + timedelta(days=1)
 
 
-def sync():
-    asyncio.run(async_main())
+async def async_get_flights():
+    print("Getting flights")
+    df = pd.read_csv("./flights_to_dl.csv")
+    async with FR24(cache_dir="fr24_flights") as fr24:
+        for _, row in df.iterrows():
+            await get_flight_playback(fr24, row.flightid, row.timestamp)
+
+
+def sync_get_pings():
+    asyncio.run(async_get_pings())
+
+
+def sync_get_flights():
+    asyncio.run(async_get_flights())
 
 
 if __name__ == "__main__":
-    sync()
+    sync_get_flights()
