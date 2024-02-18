@@ -77,10 +77,9 @@ async def get_flight_playback(client, flightid, timestamp):
             timestamp=timestamp,
             overwrite=False,
         )
-    except HTTPStatusError as e:
+    except HTTPStatusError:
         log(f"HTTPStatusError on {flightid} {timestamp}")
-        print(e)
-        raise
+        await asyncio.sleep(10)
     await asyncio.sleep(0.2)
 
 
