@@ -70,6 +70,7 @@ async def get_flight_playback(client, flightid, timestamp):
     rootdir = client.cache_dir / "playback"
     fp_metadata = rootdir / "metadata" / f"{flight_id}.parquet"
     if fp_metadata.exists():
+        log(f"Skipping {flight_id}")
         return
     try:
         await client.cache_playback_upsert(
@@ -77,10 +78,14 @@ async def get_flight_playback(client, flightid, timestamp):
             timestamp=timestamp,
             overwrite=False,
         )
-    except HTTPStatusError:
-        log(f"HTTPStatusError on {flightid} {timestamp}")
-        await asyncio.sleep(10)
-    await asyncio.sleep(0.2)
+    except HTTPStatusError as e:
+        code = e.response.status_code
+        if code == 429:
+            retry = int(e.response.headers.get("retry-after"))
+            log(f"Too many requests, sleeping for {retry} seconds")
+            await asyncio.sleep(retry)
+        else:
+            log(f"HTTP error {code} on {flightid} {timestamp}")
 
 
 async def async_get_pings():
