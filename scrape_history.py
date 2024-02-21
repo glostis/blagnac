@@ -70,22 +70,28 @@ async def get_flight_playback(client, flightid, timestamp):
     rootdir = client.cache_dir / "playback"
     fp_metadata = rootdir / "metadata" / f"{flight_id}.parquet"
     if fp_metadata.exists():
-        log(f"Skipping {flight_id}")
         return
-    try:
-        await client.cache_playback_upsert(
-            flight_id=flightid,
-            timestamp=timestamp,
-            overwrite=False,
-        )
-    except HTTPStatusError as e:
-        code = e.response.status_code
-        if code == 429:
-            retry = int(e.response.headers.get("retry-after"))
-            log(f"Too many requests, sleeping for {retry} seconds")
-            await asyncio.sleep(retry)
-        else:
-            log(f"HTTP error {code} on {flightid} {timestamp}")
+
+    tries = 0
+    while tries < 3:
+        try:
+            tries += 1
+            await client.cache_playback_upsert(
+                flight_id=flightid,
+                timestamp=timestamp,
+                overwrite=False,
+            )
+            return
+        except HTTPStatusError as e:
+            code = e.response.status_code
+            if code == 429:
+                retry = int(e.response.headers.get("retry-after"))
+                log(f"Too many requests, sleeping for {retry} seconds")
+                await asyncio.sleep(retry)
+            else:
+                log(f"HTTP error {code} on {flightid} {timestamp}")
+                await asyncio.sleep(2 * tries)
+    log(f"Exhausted number of attempts for {flightid}")
 
 
 async def async_get_pings():
@@ -107,6 +113,7 @@ async def async_get_flights():
     async with FR24(cache_dir="fr24_flights") as fr24:
         for _, row in df.iterrows():
             await get_flight_playback(fr24, row.flightid, row.timestamp)
+            # await asyncio.sleep(0.5)
 
 
 def sync_get_pings():
