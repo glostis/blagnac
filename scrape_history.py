@@ -91,6 +91,9 @@ async def get_flight_playback(client, flightid, timestamp):
             else:
                 log(f"HTTP error {code} on {flightid} {timestamp}")
                 await asyncio.sleep(2 * tries)
+        except KeyError:
+            log(f"KeyError on {flightid} {timestamp}")
+            return
     log(f"Exhausted number of attempts for {flightid}")
 
 
