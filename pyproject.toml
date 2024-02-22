@@ -21,6 +21,7 @@ streamlit-extras = "^0.3.6"
 httpx = "*"
 tqdm = "^4.66.2"
 fr24 = { git = "https://github.com/cathaypacific8747/fr24" }
+duckdb = "^0.10.0"
 
 [build-system]
 requires = ["poetry-core"]
