@@ -2,35 +2,35 @@ version: "3"
 
 services:
   streamlit:
-    image: blagnac
+    image: blagnacoscope
     build: ./
     profiles: ["front"]
     ports:
         - 8082:1234
     volumes:
       - ./:/app/
-    command: streamlit run --server.port 1234 frontend/Introduction.py
+    command: streamlit run --server.port 1234 blagnacoscope/frontend/Introduction.py
     environment:
       - VIRTUAL_HOST
       - LETSENCRYPT_HOST
       - LETSENCRYPT_EMAIL
 
   scraper:
-    image: blagnac
+    image: blagnacoscope
     build: ./
-    profiles: ["back"]
+    profiles: ["live"]
     volumes:
       - ./:/app/
-    command: python scrape.py
+    command: python blagnacoscope/backend/scrape_live.py
     restart: unless-stopped
 
   scraper-history:
-    image: blagnac
+    image: blagnacoscope
     build: ./
     profiles: ["history"]
     volumes:
       - ./:/app/
-    command: python scrape_history.py
+    command: python blagnacoscope/backend/scrape_history.py
     environment:
       - fr24_username
       - fr24_password
