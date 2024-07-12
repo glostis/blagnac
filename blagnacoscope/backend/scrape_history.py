@@ -126,6 +126,26 @@ def sync_get_pings():
 def sync_get_flights():
     asyncio.run(async_get_flights())
 
+# import duckdb
+# from tqdm import tqdm
+# from glob import glob
+# files = glob("metadata/*.parquet")
+# l = []
+# for f in tqdm(files):
+#     l.append(duckdb.sql(f"select * from '{f}'").df())
+# import pyarrow as pa
+# import pyarrow.parquet as pq
+# l
+# l[0]
+# l[0].to_records()
+# l[0].records()
+# l[0].records
+# l[0].to_dict()
+# import pandas as pd
+# df = pd.concat(l)
+# df
+# df.status_diverted.unique()
+# pq.write_table(pa.Table.from_pandas(df), "metadata.parquet")
 
 if __name__ == "__main__":
     sync_get_flights()

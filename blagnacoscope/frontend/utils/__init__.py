@@ -6,7 +6,7 @@ import geopandas as gpd
 import pandas as pd
 import pytz
 from pyproj import Geod
-from shapely import Polygon
+from shapely import Polygon, from_wkt
 
 TABLE = "flights"
 DB_PATH = Path("db.db")
@@ -41,7 +41,7 @@ def db_query(db_conn, query, where=None, groupby=None, limit=None, ttl=3600):
     return db_conn.query(sql, ttl=ttl)
 
 
-def airport_zones(
+def runway_zone(
     lon=1.3642,
     lat=43.6287,
     azimuth=RWY_HDG,
@@ -63,11 +63,19 @@ def airport_zones(
     return Polygon((nw1, nw2, se1, se2))
 
 
+def airport_zone():
+    return from_wkt(
+        "POLYGON ((1.3393245 43.6507103, 1.3417696 43.6420054, 1.3451927 43.6314588, 1.3579071 43.6121302, "
+        "1.374827 43.6109972, 1.3933118 43.6168744, 1.3901821 43.6233882, 1.3635797 43.6437748, "
+        "1.3623082 43.6555222, 1.3520389 43.6543193, 1.3393245 43.6507103))"
+    )
+
+
 def _fr24_pings_to_flights():
     import duckdb
 
     df = duckdb.sql(f"SELECT * FROM 'fr24_history/feed/playback/*.parquet' WHERE {TOFF_LAN_WHERE}").df()
-    zone = airport_zones()
+    zone = runway_zone()
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
     gdf = gdf[gdf.geometry.within(zone)]
     gdf.groupby("flightid", as_index=False)["timestamp"].first().to_csv("flights_to_dl.csv", index=False)
@@ -77,7 +85,7 @@ def aggregate_takeoffs_landings():
     import streamlit as st
 
     df = db_query(st.connection("db", type="sql"), "select *", where=TOFF_LAN_WHERE)
-    zone = airport_zones()
+    zone = runway_zone()
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs="EPSG:4326")
     gdf = gdf[gdf.geometry.within(zone)]
 

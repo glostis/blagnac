@@ -7,7 +7,7 @@ from osmnx import features_from_bbox
 from pydeck.types import String
 from pyproj import Geod
 from scipy.signal import find_peaks
-from utils import AIRBORNE_WHERE, TOFF_LAN_WHERE, airport_zones, db_query
+from utils import AIRBORNE_WHERE, TOFF_LAN_WHERE, runway_zone, db_query
 
 import streamlit as st
 
@@ -352,7 +352,7 @@ We'll therefore stick with a plain old `point.within(polygon)` in [shapely](http
     )
 
     df = db_query(DB_CONN, "select *", where=TOFF_LAN_WHERE)
-    zone = airport_zones()
+    zone = runway_zone()
     x, y = zone.exterior.coords.xy
     coordinates = [(xx, yy) for xx, yy in zip(x, y)]
     df2 = pd.DataFrame({"coordinates": [coordinates]})
