@@ -100,8 +100,8 @@ async def get_flight_playback(client, flightid, timestamp):
 async def async_get_pings():
     print("Getting pings")
     async with FR24(cache_dir="fr24_pings") as fr24:
-        start_dt = datetime(2023, 6, 1)
-        end_dt = datetime(2024, 1, 31)
+        start_dt = datetime(2024, 1, 31)
+        end_dt = datetime(2024, 11, 1)
         dt = start_dt
         while dt <= end_dt:
             log(f"Starting {dt.date()}")
@@ -148,4 +148,5 @@ def sync_get_flights():
 # pq.write_table(pa.Table.from_pandas(df), "metadata.parquet")
 
 if __name__ == "__main__":
-    sync_get_flights()
+    # sync_get_flights()
+    sync_get_pings()
